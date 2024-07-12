@@ -72,9 +72,9 @@ Shader "Debug/Normal"
             }
             float3 DecodeUnitVector16(min16uint encode)
             {
-                int n = encode & 0x1FFF;
-                int i = (sqrt(1 + 8 * n) - 1) / 2;
-                int j = n - (i + 1) * i / 2;
+                uint n = encode & 0x1FFF;
+                uint i = (sqrt(1 + 8 * n) - 1) / 2;
+                uint j = n - (i + 1) * i / 2;
                 
                 float phi = i * 1.5707963267 / 126;
                 float theta = i > 0 ? j * 1.5707963267 / i : 0;
@@ -119,8 +119,8 @@ Shader "Debug/Normal"
                     // ベクトルの向きを立体角に変換
                     const float2 thetaPhi = CartesianToSpherical(vec);
                     // 立体角を解像度で量子化
-                    const int i = round(thetaPhi.y / delta_phi);
-                    const int j = round(thetaPhi.x * i * 2 / UNITY_PI);
+                    const uint i = round(thetaPhi.y / delta_phi);
+                    const uint j = round(thetaPhi.x * i * 2 / UNITY_PI);
 
                     const uint n = (i+1)*i/2 + j;
                     compressedValue |= (uint)n;
