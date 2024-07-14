@@ -8,11 +8,13 @@ Shader "Debug/Normal"
         [ToggleUI]
         _Remap0to1("Remap 0 to 1", int) = 0
         
-        [ToggleUI]
-        _CompressTo16bit("Compress to 16 bit", int) = 0
+        [Enum(Raw,0 , CompresTo16bit, 1, CompresTo24bit, 2, CompresTo32bit, 3)]
+        _CompressionType("Compression Type", int) = 0
         
-        [ToggleUI]
-        _OutputHalfLambert("Output Half Lambert", int) = 0
+        [Enum(RawVec,0 , Half Lambert, 1, CompressionDiff, 2)]
+        _OutputConversion("Output Conversion", int) = 0
+        
+        _OutputIntensity ("Output Intensity", Range(0, 100)) = 1
     }
     SubShader
     {
@@ -21,7 +23,9 @@ Shader "Debug/Normal"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 5.0
             #include "UnityCG.cginc"
+            #include "VectorCompression.cginc"
 
             struct appdata
             {
@@ -46,8 +50,13 @@ Shader "Debug/Normal"
             #define OUTPUT_TANGENTWS 3
             uint _OutputVector;
             uint _Remap0to1;
-            uint _CompressTo16bit;
-            uint _OutputHalfLambert;
+            #define OUTPUT_CONVERSION_RAWVEC 0
+            #define OUTPUT_CONVERSION_HALFLAMBERT 1
+            #define OUTPUT_CONVERSION_COMPRESSIONDIFF 2
+            uint _OutputConversion;
+
+            float _OutputIntensity;
+            
             v2f vert (appdata v)
             {
                 v2f o;
@@ -61,32 +70,6 @@ Shader "Debug/Normal"
                 return o;
             }
 
-            float2 CartesianToSpherical(float3 cartesian)
-            {
-               //work for vector -z
-               float theta = atan2(cartesian.z, cartesian.x); 
-               //float theta = (float)Math.Atan(cartesian.z /cartesian.x);
-
-               float phi = acos(cartesian.y);
-               return float2(theta, phi);
-            }
-            float3 DecodeUnitVector16(min16uint encode)
-            {
-                uint n = encode & 0x1FFF;
-                uint i = (sqrt(1 + 8 * n) - 1) / 2;
-                uint j = n - (i + 1) * i / 2;
-                
-                float phi = i * 1.5707963267 / 126;
-                float theta = i > 0 ? j * 1.5707963267 / i : 0;
-
-                float3 normal = float3(cos(theta) * sin(phi),cos(phi),sin(theta) * sin(phi));
-                
-                if ((encode & 0x8000) != 0) normal.x *= -1;
-                if ((encode & 0x4000) != 0) normal.y *= -1;
-                if ((encode & 0x2000) != 0) normal.z *= -1;
-                
-                return normal;
-            }
             fixed4 frag (v2f input) : SV_Target
             {
                 const float3 positionWS = input.positionWS;
@@ -105,35 +88,36 @@ Shader "Debug/Normal"
                 if(_Remap0to1 == 1)
                     outputVector = outputVector*0.5 + 0.5;
 
-                min16uint compressedValue = 0;
-                if(_CompressTo16bit == 1)
+                const float3 rawVec = outputVector;
+                
+                if(_CompressionType == COMPRESSION_To16bit)
                 {
-                    const uint resolution = 126;
-                    const float delta_phi = (UNITY_PI/2.0)/resolution;
-                    const float delta_theta = delta_phi;
-                    float3 vec = outputVector;
-                    // 先頭3bitに符号を格納
-                    if (vec.x < 0) { compressedValue |= 1 << 15; vec.x *= -1; }
-                    if (vec.y < 0) { compressedValue |= 1 << 14; vec.y *= -1; }
-                    if (vec.z < 0) { compressedValue |= 1 << 13; vec.z *= -1; }
-                    // ベクトルの向きを立体角に変換
-                    const float2 thetaPhi = CartesianToSpherical(vec);
-                    // 立体角を解像度で量子化
-                    const uint i = round(thetaPhi.y / delta_phi);
-                    const uint j = round(thetaPhi.x * i * 2 / UNITY_PI);
-
-                    const uint n = (i+1)*i/2 + j;
-                    compressedValue |= (uint)n;
-                    outputVector = DecodeUnitVector16(compressedValue);
+                    const min16uint encoded = EncodeUnitVectorTo16bit(outputVector);
+                    outputVector = DecodeUnitVectorFrom16bit(encoded);
+                }
+                else if(_CompressionType == COMPRESSION_To24bit)
+                {
+                    const uint encoded = EncodeUnitVectorTo24bit(outputVector);
+                    outputVector = DecodeUnitVectorFrom24bit(encoded);
+                }
+                else if(_CompressionType == COMPRESSION_To32bit)
+                {
+                    const uint encoded = EncodeUnitVectorTo32bit(outputVector);
+                    outputVector = DecodeUnitVectorFrom32bit(encoded);
                 }
 
-                if(_OutputHalfLambert == 1)
+                if(_OutputConversion == OUTPUT_CONVERSION_HALFLAMBERT)
                 {
                     outputVector = dot(lDir, outputVector)*0.5+0.5;
                 }
+                else if(_OutputConversion == OUTPUT_CONVERSION_COMPRESSIONDIFF)
+                {
+                    const float3 compressed = outputVector;
+                    outputVector = abs(compressed - rawVec);
+                }
                     
                 
-                return float4(outputVector,1);
+                return float4(outputVector*_OutputIntensity,1);
             }
             ENDCG
         }
