@@ -8,7 +8,7 @@ Shader "Debug/Normal"
         [ToggleUI]
         _Remap0to1("Remap 0 to 1", int) = 0
         
-        [Enum(Raw,0 , CompresTo16bit, 1, CompresTo24bit, 2, CompresTo32bit, 3)]
+        [Enum(Raw,0 , CompressTo16bit, 1, CompressTo24bit, 2, CompressTo32bit, 3)]
         _CompressionType("Compression Type", int) = 0
         
         [Enum(RawVec,0 , Half Lambert, 1, CompressionDiff, 2)]
